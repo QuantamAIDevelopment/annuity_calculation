@@ -1,17 +1,17 @@
 from fastapi import APIRouter
 from agents.db_agent import fetch_lps_final
 from agents.annuity_agent import compute_annuity_for_row
-from agents.writer_agent import create_table_if_not_exists, insert_rows
+from agents.new_annuity_writer import create_new_annuity_table, insert_new_annuity_rows
 
 router = APIRouter()
 
 
-@router.post('/execute')
-def execute_workflow():
+@router.post('/execute_new_annuity')
+def execute_new_annuity_workflow():
     # Fetch data
     df = fetch_lps_final()
 
-    # Compute rows
+    # Compute rows with new annuity calculation
     rows = []
     for _, r in df.iterrows():
         row = r.to_dict()
@@ -19,11 +19,11 @@ def execute_workflow():
         row.update(computed)
         rows.append(row)
 
-    # Create table and insert
-    create_table_if_not_exists()
+    # Create new table and insert
+    create_new_annuity_table()
     # Insert in chunks
     from core.utils import chunked
     for chunk in chunked(rows, 500):
-        insert_rows(chunk)
+        insert_new_annuity_rows(chunk)
 
-    return {"message": "✅ LPS_ANNUITY_SUMMARY table created and populated successfully!"}
+    return {"message": "✅ LPS_New_Annuity_Summary table created and populated successfully with updated annuity calculations!"}

@@ -31,57 +31,71 @@ def compute_annuity_for_row(row: Dict[str, Any]) -> Dict[str, Any]:
             # leave as-is if conversion fails
             pass
 
-    ROWWISEEXTENT = float(val('ROWWISEEXTENT') or 0)
-    LandType = int(val('LandType') or 0)
+    ROWWISEEXTENT = float(val('ROWWISEEXTENT'))
+    LandType = int(val('LandType'))
     MutationAppNo = val('MutationAppNo')
     MUTATIONJOINTAPPNO = val('MUTATIONJOINTAPPNO')
+    gardenextent = float(val('gardenextent') or 0)
 
     def base_rate():
-        return 30000 if LandType == 1 else 50000
+        if LandType == 1:
+            return 30000
+        elif LandType == 2 or LandType == 3:
+            return 50000
+        else:
+            return 0
 
     Annuity_Clac = 0
     if OWNERTYPE == 'S':
         if Form_914_Agreement_Date and Form_914_Agreement_Date < datetime.date(2015, 2, 1):
-            if ROWWISEEXTENT < 1:
-                Annuity_Clac = base_rate()
-            else:
-                Annuity_Clac = ROWWISEEXTENT * base_rate()
+            Annuity_Clac = base_rate() if ROWWISEEXTENT < 1 else ROWWISEEXTENT * base_rate()
         else:
             Annuity_Clac = ROWWISEEXTENT * base_rate()
     elif OWNERTYPE == 'M':
-        cond = ((MutationAppNo != 'NULL' and MUTATIONJOINTAPPNO != 'NULL') or
-                (MutationAppNo == 'NULL' and MUTATIONJOINTAPPNO == 'NULL'))
+        cond = ((MutationAppNo != 'NULL' and MUTATIONJOINTAPPNO != 'NULL'))
         if cond:
             if Form_914_Agreement_Date and Form_914_Agreement_Date < datetime.date(2015, 2, 1):
-                if ROWWISEEXTENT < 1:
-                    Annuity_Clac = base_rate()
-                else:
-                    Annuity_Clac = ROWWISEEXTENT * base_rate()
+                Annuity_Clac = base_rate() if ROWWISEEXTENT < 1 else ROWWISEEXTENT * base_rate()
             else:
                 Annuity_Clac = ROWWISEEXTENT * base_rate()
 
-    # Compute total annuity over 15 years
+    # Calculate annuity for each year (10% increase each year based on base annuity)
+    base_annuity = float(Annuity_Clac)
+    yearly_annuities = []
     total_annuity = 0.0
-    current_annuity = float(Annuity_Clac)
+    
     for year in range(1, 16):
-        total_annuity += current_annuity
-        if year < 10:
-            current_annuity *= 1.10
+        if year <= 10:
+            # Each year increases by 10% of the base annuity amount
+            current_year_annuity = base_annuity + (base_annuity * 0.10 * (year - 1))
+        else:
+            # From 11th year onwards, maintain 10th year amount
+            current_year_annuity = base_annuity + (base_annuity * 0.10 * 9)
+        
+        # Add garden_extent * 100,000 only to first annuity
+        if year == 1:
+            current_year_annuity += gardenextent * 100000
+        
+        yearly_annuities.append(current_year_annuity)
+        total_annuity += current_year_annuity
 
-    # Sum Amount_Received from fields
+    # Sum Amount_Received from individual annuity fields
     amount_fields = [
         'FIRST_ANNUITY', 'SECOND_ANNUITY', 'THIRD_ANNUITY', 'FOURTH_ANNUITY',
         'FIFTH_ANNUITY', 'SIXTH_ANNUITY', 'SEVENTH_ANNUITY', 'EIGTH_ANNUITY',
-        'NINTH_ANNUITY', 'TENTH_ANNUITY', 'ELEVENTH_ANNUITY'
+        'NINTH_ANNUITY', 'TENTH_ANNUITY', 'ELEVENTH_ANNUITY', 'TWELFTH_ANNUITY',
+        'THIRTEENTH_ANNUITY', 'FOURTEENTH_ANNUITY', 'FIFTEENTH_ANNUITY'
     ]
     Amount_Received = 0.0
     for f in amount_fields:
         try:
             Amount_Received += float(row.get(f) or 0)
         except Exception:
-            # ignore parse errors
             pass
 
+    # Calculate total from individual annuity columns (as per dbo.final table)
+    Total_Annuity_From_Table = Amount_Received
+    
     Difference_Amount = total_annuity - Amount_Received
 
     return {
@@ -89,4 +103,8 @@ def compute_annuity_for_row(row: Dict[str, Any]) -> Dict[str, Any]:
         'Amount_Received': Amount_Received,
         'Difference_Amount': Difference_Amount,
         'Annuity_Clac': Annuity_Clac,
+        'Total_Annuity_From_Table': Total_Annuity_From_Table,
+        'Base_Annuity': base_annuity,
+        'Yearly_Annuities': yearly_annuities,
+        'gardenextent': gardenextent,
     }
